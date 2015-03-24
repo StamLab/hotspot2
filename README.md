@@ -1,29 +1,15 @@
 # README #
 
-This README would normally document whatever steps are necessary to get your application up and running.
+BEDOPS enabled Hotspot.
+The software is a fast implementation of the hotspot algorithm for identifying regions of enrichment
+in next generation sequencing assays.
 
-### What is this repository for? ###
+### Requirements ###
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+BEDOPS >2.4
+Python 2.7
 
-### How do I get set up? ###
+### TODO ###
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
-
-### Contribution guidelines ###
-
-* Writing tests
-* Code review
-* Other guidelines
-
-### Who do I talk to? ###
-
-* Repo owner or admin
-* Other community or team contact
+* Badspot implementation
+* FDR calibration script
