@@ -1,18 +1,18 @@
 
 # simulate tags
-bash random.tags.sh \
+bash scripts/random.tags.sh \
 	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/cutcounts.random.bed
 
 # actual data
-bash hotspot.run.sh \
+bash scripts/hotspot.run.sh \
 	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.bed
 
 # simulated data
-bash hotspot.run.sh \
+bash scripts/hotspot.run.sh \
 	/tmp/cutcounts.random.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.simulated.bed
