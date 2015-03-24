@@ -6,8 +6,8 @@ in next generation sequencing assays.
 
 ### Requirements ###
 
-BEDOPS >2.4
-Python 2.7
+* BEDOPS >2.4
+* Python 2.7
 
 ### TODO ###
 
