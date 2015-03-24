@@ -25,10 +25,64 @@
 # is needed. There is an accompanying utility:
 # "random.tags.sh" that will make one for you.
 
-outfile=
-tmpdir=/tmp
-cutcounts=/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed
-uniq_mapping_file=/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed
+
+usage="Usage: hotspot.run.sh [--help] [--tmpdir=] [--contig=] <tags> <uniq-mapability> <output BED file>"
+
+params=$(getopt -o '' -l contig:,tmpdir:,help -n "hotspot.run.sh" -- "$@")
+eval set -- "$params"
+
+while true; do
+	case "$1" in
+		--contig) 
+			case "$2" in
+				"") echo "ERROR: No contig specified!"; exit 1; ;;
+				*) contig=$2; shift 2; ;;
+			esac ;;
+		--tmpdir) 
+			case "$2" in
+				"") echo "ERROR: No TMPDIR specified!"; exit 1; ;;
+				*) tmpdir=$2; shift 2; ;;
+			esac ;;
+		--help) echo -e $usage; exit 0; ;;
+		--) shift; break; ;;
+		*) echo -e "\Fatal error!\n"; exit 1; ;;
+	esac	
+done
+
+tags=$1
+uniq_mapping_file=$2
+outfile=$3
+
+if [ $# -lt 3 ]; then
+	echo "ERROR: Missing required arguments!"
+	echo $usage
+	exit 1
+fi
+
+if [ ! -r "$tags" ]; then
+	echo "ERROR: Tag file cannot be read!"
+	exit 1
+fi
+
+if [ ! -r "$uniq_mapping_file" ]; then
+	echo "ERROR: Mappability file cannot be read!"
+	exit 1
+fi
+
+# If no TMPDIR set make one
+# Else test if we have permissions, etc. to make one
+
+if [ -z "$tmpdir" ]; then
+	tmpdir=$(mktemp -d)
+else
+	mkdir -p $tmpdir || { echo "ERROR: Cannot create TMPDIR!"; exit 1; }
+fi
+
+echo "PARAM:tagfile:$tags"
+echo "PARAM:unqiuely_mapping_file:$uniq_mapping_file"
+echo "PARAM:outfile:$outfile"
+echo "PARAM:tmpdir:$tmpdir"
+echo "PARAM:contig:$contig"
 
 ######
 # Theorectically speaking, nothing needs to be
@@ -37,36 +91,52 @@ uniq_mapping_file=/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed
 
 set -o pipefail
 
-# Number of passes
-npasses=2
+######
+# Hardcoded variables
+######
 
-# Thresholding and merging parameters
-z_thresh=2
-min_width=10
-merge_distance=75
+npasses=2 					# Number of passes
+z_thresh=2 					# Min. z score to be reported (*not FDR*)
+merge_distance=75 			# Min. distance to merge hotspots
 
-# Local window sizes to test (actually half-width)
-local_window_size_min=100
-local_window_size_max=150
-local_window_size_step=25
+local_window_size_min=100	# Min. local window size
+local_window_size_max=150	# Max. local window size
+local_window_size_step=25	# Windows sizes are stepped by this amount
+local_window_sd_thresh=3	# Number of SDs need to pass threshold
+
 local_window_sizes=(`seq $local_window_size_min $local_window_size_step $local_window_size_max`)
 
-local_window_sd_thresh=3
-
-# Background window size (actually half-width)
-background_window_size=25000
+background_window_size=25000	# Background window size
 
 #TODO: implement badspot pipeline
 touch ${tmpdir}/badspots.bed
 badspots="${tmpdir}/badspots.bed" # need to talk to Bob aboout how to make this file
 
+######
+# 
+######
+
 excluded="" # regions to be removed that are accumulated with each "pass"
 included="" # putative hotspots identified with each "pass"
 
 # Named pipes that are reused throughout the script
+
 uniq_mapping_pos=${tmpdir}/uniq_mapping_positions.counts.pipe
 background_window_counts=${tmpdir}/background_window.counts.pipe
 local_window_counts=${tmpdir}/local_window.counts.pipe
+
+# If we are running in contig mode, chage
+# the cutcounts read command
+
+if [ -z $"contig" ]; then
+	read_command="cat $tags"
+else 
+	read_command="bedextract $contig $tags"
+fi
+
+######
+# Main iteration loop
+######
 
 for iteration in $(seq 1 $npasses); do
 	
@@ -92,7 +162,8 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $uniq_mapping_pos; mkfifo $uniq_mapping_pos
 
-	bedops -u --range $background_window_size $cutcounts \
+	eval $read_command \
+		| bedops -u --range $background_window_size - \
 		| bedmap --faster --bases-uniq - $uniq_mapping_file \
 	> $uniq_mapping_pos &
 
@@ -100,7 +171,8 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	bedops -n -1 $cutcounts $badspots $excluded\
+	eval $read_command \
+		| bedops -n -1 - $badspots $excluded\
 		| bedmap --faster --prec 0 --sum --range $background_window_size - \
 	> $background_window_counts &
 
@@ -111,8 +183,9 @@ for iteration in $(seq 1 $npasses); do
 	for window_size in ${local_window_sizes[@]}; do
 
 		rm -f ${tmpdir}/local_window_${window_size}.counts.pipe; mkfifo ${tmpdir}/local_window_${window_size}.counts.pipe
-	
-		bedops -n -1 $cutcounts $badspots $excluded \
+		
+		eval $read_command \
+			| bedops -n -1 - $badspots $excluded \
 			| bedmap --faster --prec 0 --sum --range ${window_size} - \
 		> ${tmpdir}/local_window_${window_size}.counts.pipe &
 
@@ -135,7 +208,7 @@ for iteration in $(seq 1 $npasses); do
 	# --Center is selected by averaging windows, window size is also averaged
 	# --Output BED: chr window_left window_right "i" pos
 
-	cut -f1-3 $cutcounts \
+	cut -f1-3 $tags \
 		| paste - $uniq_mapping_pos $background_window_counts $window_count_files \
 		| awk -v OFS="\t" \
 			-v n_windows=${#local_window_sizes[@]} \
@@ -223,7 +296,8 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	bedops -n -1 $cutcounts $badspots \
+	eval $read_command \
+		| bedops -n -1 - $badspots \
 		| bedmap --faster --prec 0 --sum --range $background_window_size $raw_hotspots - \
 	> $background_window_counts &
 
@@ -231,7 +305,8 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $local_window_counts; mkfifo $local_window_counts
 
-	bedops -n -1 $cutcounts $badspots \
+	eval $read_command \
+		| bedops -n -1 - $badspots \
 		| bedmap --faster --delim "\t" --prec 0 --echo-map-range --sum $raw_hotspots - \
 		| cut -f2- \
 	> $local_window_counts &
@@ -297,7 +372,9 @@ echo "BEGIN:Combine and threshold passes. (`date -u`)"
 bedops -u $included \
 	| awk -v OFS="\t" -v min_width=$min_width -v z_thresh=$z_thresh \
 			'$3-$2 < min_width { next; } $10 < z_thresh { next; } { print; }' \
-> $outfile
+> ${tmpdir}/combined.all-passes.hotspots.bed
 
 echo "END:Combine and threshold passes. (`date -u`)"
+
+rsync ${tmpdir}/combined.all-passes.hotspots.bed  $outfile
 
