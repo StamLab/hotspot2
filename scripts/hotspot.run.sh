@@ -5,7 +5,7 @@
 # Jeff Vierstra
 # 3/2015
 #
-# Based on Shane Neph original implementation
+# Based on Shane Neph's original implementation
 ######
 
 ######

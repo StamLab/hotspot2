@@ -77,8 +77,6 @@ echo "PARAM:outfile:$outfile"
 echo "PARAM:tmpdir:$tmpdir"
 echo "PARAM:seed:$seed"
 
-exit
-
 ######
 # Theorectically speaking, nothing needs to be
 # changed below.
@@ -141,8 +139,8 @@ while read chr n; do
 		| awk -v OFS="\t" \
 			-v n=$n \
 			-v seed=$seed \
-			'BEGIN { srand(seed); }'
-			'{ total += $3-$2; } \
+			'BEGIN { srand(seed); } \
+			{ total += $3-$2; } \
 			END { \
 				for(i = 0; i < n; i++) { \
 					print int(rand() * total); \

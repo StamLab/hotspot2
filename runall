@@ -6,15 +6,24 @@ bash scripts/random.tags.sh \
 	/tmp/cutcounts.random.bed
 
 # actual data
-bash scripts/hotspot.run.sh \
+bash scripts/hotspot.run.sh --contig=chr1 \
 	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.bed
 
 # simulated data
-bash scripts/hotspot.run.sh \
+bash scripts/hotspot.run.sh --contig=chr1 \
 	/tmp/cutcounts.random.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.simulated.bed
 
-#FDR calculation
+# if in contig mode; merge all hotspots together here
+# note: not yet tried
+
+# q-value calculation
+python scripts/compute_q_values.py \
+	/tmp/hotspots.simulated.bed /tmp/hotspots.bed \
+> /tmp/hotspots.fdr.bed
+
+# select q-value and make list
+bash scripts/hotspot.thresh-merge.sh 0.01 /tmp/hotspots.fdr.bed /tmp/hotspots.fdr.0.01.bed 
