@@ -45,7 +45,7 @@ while true; do
 			esac ;;
 		--help) echo -e $usage; exit 0; ;;
 		--) shift; break; ;;
-		*) echo -e "\Fatal error!\n"; exit 1; ;;
+		*) echo "Fatal error!"; exit 1; ;;
 	esac	
 done
 
@@ -79,7 +79,7 @@ else
 fi
 
 echo "PARAM:tagfile:$tags"
-echo "PARAM:unqiuely_mapping_file:$uniq_mapping_file"
+echo "PARAM:uniquely_mapping_file:$uniq_mapping_file"
 echo "PARAM:outfile:$outfile"
 echo "PARAM:tmpdir:$tmpdir"
 echo "PARAM:contig:$contig"
@@ -121,14 +121,13 @@ included="" # putative hotspots identified with each "pass"
 
 # Named pipes that are reused throughout the script
 
-uniq_mapping_pos=${tmpdir}/uniq_mapping_positions.counts.pipe
 background_window_counts=${tmpdir}/background_window.counts.pipe
 local_window_counts=${tmpdir}/local_window.counts.pipe
 
 # If we are running in contig mode, chage
 # the cutcounts read command
 
-if [ -z $"contig" ]; then
+if [ -z "$contig" ]; then
 	read_command="cat $tags"
 else 
 	read_command="bedextract $contig $tags"
@@ -140,7 +139,6 @@ fi
 
 for iteration in $(seq 1 $npasses); do
 	
-
 	# Step 1: Look for local enrichment of tags in
 	# small windows (200-300 bp)
 
@@ -158,25 +156,19 @@ for iteration in $(seq 1 $npasses); do
 
 	echo "BEGIN:pass-$iteration:Selecting and merging windows. (`date -u`)"
 
-	# Get number of uniquely mapping positions in background window
-
-	rm -f $uniq_mapping_pos; mkfifo $uniq_mapping_pos
-
-	eval $read_command \
-		| bedops -u --range $background_window_size - \
-		| bedmap --faster --bases-uniq - $uniq_mapping_file \
-	> $uniq_mapping_pos &
-
 	# Get number of tags in background window
-
+	# Get number of uniquely mapping positions in background window
+	
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	eval $read_command \
-		| bedops -n -1 - $badspots $excluded\
-		| bedmap --faster --prec 0 --sum --range $background_window_size - \
+	eval $read_command | bedops -n -1 - $badspots $excluded \
+		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum - \
+		| bedops --range $background_window_size -u - \
+		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
+		| cut -f6- \
 	> $background_window_counts &
 
-	window_count_files=""
+	local_window_counts_files=""
 
 	# Iterate over possible window sizes
 
@@ -184,12 +176,11 @@ for iteration in $(seq 1 $npasses); do
 
 		rm -f ${tmpdir}/local_window_${window_size}.counts.pipe; mkfifo ${tmpdir}/local_window_${window_size}.counts.pipe
 		
-		eval $read_command \
-			| bedops -n -1 - $badspots $excluded \
-			| bedmap --faster --prec 0 --sum --range ${window_size} - \
+		eval $read_command | bedops -n -1 - $badspots $excluded \
+			| bedmap --faster --prec 0 --range ${window_size} --sum - \
 		> ${tmpdir}/local_window_${window_size}.counts.pipe &
 
-		window_count_files="$window_count_files ${tmpdir}/local_window_${window_size}.counts.pipe"
+		local_window_counts_files="$local_window_counts_files ${tmpdir}/local_window_${window_size}.counts.pipe"
 
 	done
 	
@@ -208,28 +199,29 @@ for iteration in $(seq 1 $npasses); do
 	# --Center is selected by averaging windows, window size is also averaged
 	# --Output BED: chr window_left window_right "i" pos
 
-	cut -f1-3 $tags \
-		| paste - $uniq_mapping_pos $background_window_counts $window_count_files \
+	eval $read_command | bedops -n -1 - $badspots $excluded \
+		| cut -f1-3 - \
+		| paste - $background_window_counts $local_window_counts_files \
 		| awk -v OFS="\t" \
 			-v n_windows=${#local_window_sizes[@]} \
 			-v window_min=$local_window_size_min \
 			-v window_step=$local_window_size_step \
 			-v window_sd_thresh=$local_window_sd_thresh \
-			'{
+			'{ \
 				max_window_size = -1; \
 				max_o = 0; \
 				max_e = 0; \
 				\
 				for(i = 0; i < n_windows; i += 1) { \
 					window_size = (i * window_step) + window_min; \
-					full_window_size = window_size * 2;
+					full_window_size = window_size * 2; \
 					\
-					if(full_window_size >= $4 || $5 == 0) { continue; }
+					if(full_window_size >= $5 || $4 == 0) { continue; } \
 					\
-					o = $(i+6);\
+					o = $(i+6); \
 					\
-					p = full_window_size / $4; \
-					e = p * $5; \
+					p = full_window_size / $5; \
+					e = p * $4; \
 					e_sigma = sqrt(e * (1-p)); \
 					\
 					thresh = 1 + e + (e_sigma * window_sd_thresh); \
@@ -251,16 +243,15 @@ for iteration in $(seq 1 $npasses); do
 			\
 			BEGIN { chr = ""; start = -1; center = -1; w = -1; e = 0; o = 0; n = -1; } \
 			{ \
-				if(start < 0) { \
-					chr = $1; start = $2; center = $2; w = $5; e = $6; o = $7; n = 1; \
-				} else if (chr == $1 && abs(start - $2) < ($5 * 2)) { \
-					center += $2; w += $5; e += $6; o+= $7; n += 1; \
+				if (chr == $1 && abs(start - $2) < ($5 * 2)) { \
+					center += $2; w += $5; e += $6; o += $7; n += 1; \
 				} else { \
-					print chr, int(center/n) - int(w/n), int(center/n) + int(w/n), "i", int(center/n), e/n, o/n, n; \
-					\
+					if(chr != "") { \
+						print chr, int(center/n) - int(w/n), int(center/n) + int(w/n), "i", int(center/n), e/n, o/n, n; \
+					} \
 					chr = $1; start = $2; center = $2; w = $5; e = $6; o = $7; n = 1; \
 				} \
-			}
+			} \
 			END { print chr, int(center/n) - int(w/n), int(center/n) + int(w/n), "i", int(center/n), e/n, o/n, n; }' \
 	> $raw_hotspots
 
@@ -270,9 +261,8 @@ for iteration in $(seq 1 $npasses); do
 
 	# Clean-up named pipes
 
-	rm -f $uniq_mapping_pos
 	rm -f $background_window_counts
-	rm -f $window_count_files
+	rm -f $local_window_counts_files
 
 	echo "END:pass-$iteration:Selecting and merging windows. (`date -u`)"
 
@@ -284,29 +274,23 @@ for iteration in $(seq 1 $npasses); do
 
 	echo "BEGIN:pass-$iteration:Re-calculating Z-scores from all data. (`date -u`)"
 
-	# Get # of uniquely mappable positions in background window of hotspots
-
-	rm -f $uniq_mapping_pos; mkfifo $uniq_mapping_pos
-
-	bedops -u --range $background_window_size $raw_hotspots \
-		| bedmap --faster --bases-uniq - $uniq_mapping_file \
-	> $uniq_mapping_pos &
-
-	# Get # of tags in background window of hotspots
+	# Get number of tags in background window
+	# Get number of uniquely mapping positions in background window
 
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	eval $read_command \
-		| bedops -n -1 - $badspots \
-		| bedmap --faster --prec 0 --sum --range $background_window_size $raw_hotspots - \
+	eval $read_command | bedops -n -1 - $badspots \
+		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum $raw_hotspots - \
+		| bedops --range $background_window_size -u - \
+		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
+		| cut -f9- \
 	> $background_window_counts &
 
 	# Get # of tags in hotspots
 
 	rm -f $local_window_counts; mkfifo $local_window_counts
 
-	eval $read_command \
-		| bedops -n -1 - $badspots \
+	eval $read_command | bedops -n -1 - $badspots \
 		| bedmap --faster --delim "\t" --prec 0 --echo-map-range --sum $raw_hotspots - \
 		| cut -f2- \
 	> $local_window_counts &
@@ -316,17 +300,17 @@ for iteration in $(seq 1 $npasses); do
 	# Output BED: chr left right "i" pos window_size expect expect_sigma, observed, z
 
 	cut -f1-5 $raw_hotspots \
-		| paste - $uniq_mapping_pos $background_window_counts $local_window_counts \
+		| paste - $background_window_counts $local_window_counts \
 	 	| awk -v OFS="\t" \
 	 	'NF == 10 { \
 	 		window_size = $3-$2; \
 	 		\
-	 		if(window_size >= $6 || $7 == 0) { next; } \
+	 		if(window_size >= $7 || $6 == 0) { next; } \
 	 		\
 	 		o = $10;\
 	 		\
-	 		p = window_size / $6; \
-	 		e = p * $7; \
+	 		p = window_size / $7; \
+	 		e = p * $6; \
 	 		e_sigma = sqrt(e * (1-p)); \
 	 		\
 	 		z = (o - e) / e_sigma; \
@@ -341,7 +325,6 @@ for iteration in $(seq 1 $npasses); do
 
 	# Clean-up named pipe
 	
-	rm -f $uniq_mapping_pos
 	rm -f $background_window_counts
 	rm -f $local_window_counts
 
@@ -376,5 +359,5 @@ bedops -u $included \
 
 echo "END:Combine and threshold passes. (`date -u`)"
 
-rsync ${tmpdir}/combined.all-passes.hotspots.bed  $outfile
+rsync ${tmpdir}/combined.all-passes.hotspots.bed $outfile
 

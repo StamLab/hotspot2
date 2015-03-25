@@ -34,7 +34,7 @@ while true; do
 			esac ;;
 		--help) echo -e $usage; exit 0; ;;
 		--) shift; break; ;;
-		*) echo -e "\Fatal error!\n"; exit 1; ;;
+		*) echo "Fatal error!"; exit 1; ;;
 	esac	
 done
 

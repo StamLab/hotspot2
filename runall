@@ -1,3 +1,6 @@
+######
+# Example to call hotspots, with FDR calibration
+######
 
 # simulate tags
 bash scripts/random.tags.sh \
@@ -5,14 +8,16 @@ bash scripts/random.tags.sh \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/cutcounts.random.bed
 
+# now one could down-sample the tags at this point for a proper SPOT calculation.
+
 # actual data
-bash scripts/hotspot.run.sh --contig=chr1 \
+bash scripts/hotspot.run.sh --contig=chr19 \
 	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.bed
 
 # simulated data
-bash scripts/hotspot.run.sh --contig=chr1 \
+bash scripts/hotspot.run.sh \
 	/tmp/cutcounts.random.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.simulated.bed
@@ -26,4 +31,21 @@ python scripts/compute_q_values.py \
 > /tmp/hotspots.fdr.bed
 
 # select q-value and make list
-bash scripts/hotspot.thresh-merge.sh 0.01 /tmp/hotspots.fdr.bed /tmp/hotspots.fdr.0.01.bed 
+bash scripts/hotspot.thresh-merge.sh 0.01 /tmp/hotspots.fdr.bed /tmp/hotspots.fdr.0.01.bed
+
+######
+# Example to determine SPOT, with downsampling to 5M tags
+######
+
+bash scripts/downsample.sh \
+	5000000 \
+	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
+	/tmp/cutcounts.downsampled.bed
+
+# actual data
+bash scripts/hotspot.run.sh \
+	/tmp/cutcounts.downsampled.bed \
+	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
+	/tmp/hotspots.bed
+
+bash scripts/spot.sh /tmp/cutcounts.downsampled.bed /tmp/hotspots.bed
