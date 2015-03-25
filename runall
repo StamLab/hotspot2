@@ -8,8 +8,6 @@ bash scripts/random.tags.sh \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/cutcounts.random.bed
 
-# now one could down-sample the tags at this point for a proper SPOT calculation.
-
 # actual data
 bash scripts/hotspot.run.sh --contig=chr19 \
 	/home/jvierstra/proj/ss.dnase/data/K562-P5-20140207/align/cutcounts.bed \
@@ -21,9 +19,6 @@ bash scripts/hotspot.run.sh \
 	/tmp/cutcounts.random.bed \
 	/data/vol7/annotations/data/hg19/hg19.K36.mappable_only.bed \
 	/tmp/hotspots.simulated.bed
-
-# if in contig mode; merge all hotspots together here
-# note: not yet tried
 
 # q-value calculation
 python scripts/compute_q_values.py \
