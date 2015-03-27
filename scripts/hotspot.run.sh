@@ -1,5 +1,7 @@
 #/bin/bash
 
+set -o pipefail
+
 ######
 # Hawtspaught (BEDOPS-enabled)
 # Jeff Vierstra
@@ -26,7 +28,7 @@
 # "random.tags.sh" that will make one for you.
 
 
-usage="Usage: hotspot.run.sh [--help] [--tmpdir=] [--contig=] <tags> <uniq-mapability> <output BED file>"
+usage="Usage: hotspot.run.sh [--help] [--tmpdir=] [--contig=] <tag counts> <uniq-mapability> <output hotspots file>"
 
 params=$(getopt -o '' -l contig:,tmpdir:,help -n "hotspot.run.sh" -- "$@")
 eval set -- "$params"
@@ -36,7 +38,7 @@ while true; do
 		--contig) 
 			case "$2" in
 				"") echo "ERROR: No contig specified!"; exit 1; ;;
-				*) contig=$2; shift 2; ;;
+				*) read_opts="--chrom $2"; shift 2; ;;
 			esac ;;
 		--tmpdir) 
 			case "$2" in
@@ -89,8 +91,6 @@ echo "PARAM:contig:$contig"
 # changed below.
 ######
 
-set -o pipefail
-
 ######
 # Hardcoded variables
 ######
@@ -124,14 +124,15 @@ included="" # putative hotspots identified with each "pass"
 background_window_counts=${tmpdir}/background_window.counts.pipe
 local_window_counts=${tmpdir}/local_window.counts.pipe
 
-# If we are running in contig mode, chage
-# the cutcounts read command
+# Set the read command by format and 
+# whether a specific contig is desired
 
-if [ -z "$contig" ]; then
-	read_command="cat $tags"
-else 
-	read_command="bedextract $contig $tags"
-fi
+read_command="bedops $read_opts -u $tags"	
+
+# Make the I/O faster by uncompressing
+# the cutcounts file to a local temp
+
+eval $read_command > ${tmpdir}/tagcounts.bed
 
 ######
 # Main iteration loop
@@ -161,7 +162,7 @@ for iteration in $(seq 1 $npasses); do
 	
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	eval $read_command | bedops -n -1 - $badspots $excluded \
+	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
 		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum - \
 		| bedops --range $background_window_size -u - \
 		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
@@ -176,7 +177,7 @@ for iteration in $(seq 1 $npasses); do
 
 		rm -f ${tmpdir}/local_window_${window_size}.counts.pipe; mkfifo ${tmpdir}/local_window_${window_size}.counts.pipe
 		
-		eval $read_command | bedops -n -1 - $badspots $excluded \
+		bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
 			| bedmap --faster --prec 0 --range ${window_size} --sum - \
 		> ${tmpdir}/local_window_${window_size}.counts.pipe &
 
@@ -199,7 +200,7 @@ for iteration in $(seq 1 $npasses); do
 	# --Center is selected by averaging windows, window size is also averaged
 	# --Output BED: chr window_left window_right "i" pos
 
-	eval $read_command | bedops -n -1 - $badspots $excluded \
+	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
 		| cut -f1-3 - \
 		| paste - $background_window_counts $local_window_counts_files \
 		| awk -v OFS="\t" \
@@ -241,7 +242,7 @@ for iteration in $(seq 1 $npasses); do
 				return ((x < 0.0) ? -x : x) \
 			} \
 			\
-			BEGIN { chr = ""; start = -1; center = -1; w = -1; e = 0; o = 0; n = -1; } \
+			BEGIN { chr = ""; } \
 			{ \
 				if (chr == $1 && abs(start - $2) < ($5 * 2)) { \
 					center += $2; w += $5; e += $6; o += $7; n += 1; \
@@ -279,7 +280,7 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $background_window_counts; mkfifo $background_window_counts
 
-	eval $read_command | bedops -n -1 - $badspots \
+	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots \
 		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum $raw_hotspots - \
 		| bedops --range $background_window_size -u - \
 		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
@@ -290,7 +291,7 @@ for iteration in $(seq 1 $npasses); do
 
 	rm -f $local_window_counts; mkfifo $local_window_counts
 
-	eval $read_command | bedops -n -1 - $badspots \
+	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots \
 		| bedmap --faster --delim "\t" --prec 0 --echo-map-range --sum $raw_hotspots - \
 		| cut -f2- \
 	> $local_window_counts &

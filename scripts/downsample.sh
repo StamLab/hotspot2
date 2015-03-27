@@ -11,7 +11,7 @@
 
 usage="Usage: downsample.sh [--help] [--tmpdir=] [--seed] <N> <tags> <output BED file>"
 
-params=$(getopt -o '' -l tmpdir:,seed:,help -n "random.tags.sh" -- "$@")
+params=$(getopt -o '' -l tmpdir:,seed:,help -n "downsample.sh" -- "$@")
 eval set -- "$params"
 
 while true; do
@@ -69,7 +69,7 @@ set -o pipefail
 
 # Count the total tags in the file
 
-ntags=`cat $tags | awk '{ n += $5; } END { print n; }'`
+ntags=`bedops -u $tags | awk '{ n += $5; } END { print n; }'`
 
 if [ ! "$n" -le "$ntags" ]; then
 	echo "ERROR: Number of tags desired ($n) is greater or equal to total tags ($ntags)"
@@ -78,7 +78,7 @@ fi
 
 # Sequential sample lines from the "uncompressed" file.
 
-cat $tags \
+bedops -u $tags \
 	| awk '{ for(i = 0; i < $5; i++) { print $1, $2, $3; } }' \
 	| random-lines --num=$n --max=$ntags --seed=$seed \
 > ${tmpdir}/cuts

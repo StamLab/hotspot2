@@ -1,5 +1,6 @@
 #!/bin/bash
-#/bin/bash
+
+set -o pipefail
 
 ######
 # Hawtspaught (BEDOPS-enabled)
@@ -15,13 +16,18 @@
 # software to function properly.
 ######
 
-usage="Usage: random.tags.sh [--help] [--tmpdir=] [--seed] <tags> <uniq-mapability> <output BED file>"
+usage="Usage: simulate.tags.sh [--help] [--contig=] [--tmpdir=] [--seed=] [--starch-output] <tag counts> <uniq-mapability> <output file>"
 
-params=$(getopt -o '' -l tmpdir:,seed:,help -n "random.tags.sh" -- "$@")
+params=$(getopt -o '' -l contig:,tmpdir:,seed:,starch-output,help -n "simulate.tags.sh" -- "$@")
 eval set -- "$params"
 
 while true; do
 	case "$1" in
+		--contig) 
+			case "$2" in
+				"") echo "ERROR: No contig specified!"; exit 1; ;;
+				*) read_opts="--chrom $2"; shift 2; ;;
+			esac ;;
 		--tmpdir) 
 			case "$2" in
 				"") echo "ERROR: No TMPDIR specified!"; exit 1; ;;
@@ -32,6 +38,8 @@ while true; do
 				"") echo "ERROR: No seed specified!"; exit 1; ;;
 				*) seed=$2; shift 2; ;;
 			esac ;;
+		--starch-output)
+			starch_output=1; shift; ;;
 		--help) echo -e $usage; exit 0; ;;
 		--) shift; break; ;;
 		*) echo "Fatal error!"; exit 1; ;;
@@ -82,8 +90,6 @@ echo "PARAM:seed:$seed"
 # changed below.
 ######
 
-set -o pipefail
-
 ######
 # The scripts translates line numbers into
 # genomic coordinates.
@@ -93,6 +99,7 @@ cat <<SCRIPT > ${tmpdir}/translate.py
 
 import sys
 
+contig = ""
 start = 0 # region start
 end = 0 # region end
 
@@ -111,31 +118,36 @@ for line in fn:
 		if not rline:
 			break
 
-		(chr, start, end) = rline.strip().split('\t')
+		(contig, start, end) = rline.strip().split('\t')
 		(start, end) = (int(start), int(end))
 
 		pos += end - start
 
-	print "%s\t%d\t%d\ti\t%d" % (chr, end - (pos - i + 1), end - (pos - i + 1) + 1, n);
+	print "%s\t%d\t%d\ti\t%d" % (contig, end - (pos - i + 1), end - (pos - i + 1) + 1, n);
 
 fn.close()
 
 SCRIPT
 
+read_command="bedops $read_opts -u $tags"	
 
-rm -f ${tmpdir}/cutcounts.bed
+# Remove old files
 
-cat $tags \
+rm -f ${tmpdir}/tagcounts.bed
+
+eval $read_command \
 	| awk -v OFS="\t" '{ c[$1] += $5; } \
-		END { for(chr in c) { print chr, c[chr]; } }' \
+		END { for(contig in c) { print contig, c[contig]; } }' \
 	| sort -k1,1 \
 > ${tmpdir}/tagcounts
 
-while read chr n; do
+# read each contig
+
+while read c n; do
 
 	# Generate random line numbers and sort
 
-	bedextract $chr $uniq_mapping_file \
+	bedops --chrom $c -u $uniq_mapping_file \
 		| awk -v OFS="\t" \
 			-v n=$n \
 			-v seed=$seed \
@@ -153,11 +165,15 @@ while read chr n; do
 
 	# Convert the line numbers to genomic positions
 
-	bedextract $chr $uniq_mapping_file \
+	bedops --chrom $c -u $uniq_mapping_file \
 		| python ${tmpdir}/translate.py ${tmpdir}/linenums \
-	>> ${tmpdir}/cutcounts.bed
+	>> ${tmpdir}/tagcounts.bed
 
 done < ${tmpdir}/tagcounts
 
-rsync ${tmpdir}/cutcounts.bed $outfile
+if [ -n "$starch_output" ]; then
+	starch ${tmpdir}/tagcounts.bed > $outfile
+else
+	rsync ${tmpdir}/tagcounts.bed $outfile
+fi
 
