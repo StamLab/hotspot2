@@ -16,7 +16,7 @@ set -o pipefail
 # software to function properly.
 ######
 
-usage="Usage: simulate.tags.sh [--help] [--contig=] [--tmpdir=] [--seed=] [--starch-output] <tag counts> <uniq-mapability> <output file>"
+usage="Usage: simulate.tags.sh [--help] [--contig=] [--tmpdir=] [--seed=] [--starch-output] <fragments> <uniq-mapability> <output file>"
 
 params=$(getopt -o '' -l contig:,tmpdir:,seed:,starch-output,help -n "simulate.tags.sh" -- "$@")
 eval set -- "$params"
@@ -46,7 +46,7 @@ while true; do
 	esac	
 done
 
-tags=$1
+frags=$1
 uniq_mapping_file=$2
 outfile=$3
 
@@ -56,8 +56,8 @@ if [ $# -lt 3 ]; then
 	exit 1
 fi
 
-if [ ! -r "$tags" ]; then
-	echo "ERROR: Tag file cannot be read!"
+if [ ! -r "$frags" ]; then
+	echo "ERROR: Fragments file cannot be read!"
 	exit 1
 fi
 
@@ -79,7 +79,7 @@ if [ -z "$seed" ]; then
 	seed=1
 fi
 
-echo "PARAM:tagfile:$tags"
+echo "PARAM:fragfile:$frags"
 echo "PARAM:unqiuely_mapping_file:$uniq_mapping_file"
 echo "PARAM:outfile:$outfile"
 echo "PARAM:tmpdir:$tmpdir"
@@ -90,31 +90,115 @@ echo "PARAM:seed:$seed"
 # changed below.
 ######
 
-######
-# The scripts translates line numbers into
-# genomic coordinates.
-######
+echo "BEGIN:Compute distributions. (`date -u`)"
 
-cat <<SCRIPT > ${tmpdir}/translate.py
+bedops $read_opts -u $frags \
+	| awk \
+		-v OFS="\t" \
+		-v fraglens=${tmpdir}/fraglens \
+		'BEGIN { t = 0; } \
+		{ c[$1] += 1; s[$3-$2] += 1; } \
+		END { \
+			for(contig in c) { \
+				print contig, c[contig]; \
+			} \
+			for(len in s) { \
+				print len, s[len] > fraglens; \
+			} \
+		}' \
+	| sort -k1,1 \
+> ${tmpdir}/fragcounts
+
+bedops $read_opts -u $uniq_mapping_file \
+	| awk \
+		-v OFS="\t" \
+		'{ c[$1] += $3-$2; } \
+		END { \
+			for(contig in c) { \
+				print contig, c[contig]; \
+			} \
+		}' \
+	| sort -k1,1 \
+> ${tmpdir}/uniqcounts
+
+echo "END:Compute distributions. (`date -u`)"
+
+files=""
+
+# iterate contigs
+
+while read c n t; do
+
+	# sample line numbers and lengths
+
+	python <(cat <<__SCRIPT__
+
+import numpy as np
+
+fraglens = open("${tmpdir}/fraglens")
+
+lens = []
+prbs = []
+
+for line in fraglens:
+
+	(l, n) = line.strip().split('\t')
+	(l, n) = (int(l), float(n))
+
+	lens.append(l)
+	prbs.append(n)
+
+prbs = np.array(prbs)
+prbs /= np.sum(prbs)
+
+fraglens.close()
+
+np.random.seed(${seed})
+
+sampled_linenums = iter(np.random.choice(${t}, size = ${n}))
+sampled_fraglens = iter(np.random.choice(lens, size = ${n}, p = prbs))
+
+while 1:
+
+	try:
+
+		linenum = next(sampled_linenums)
+		fraglen = next(sampled_fraglens)
+
+		print "%d\t%d" % (linenum + 1, fraglen)
+
+	except:
+
+		break
+
+__SCRIPT__
+		) \
+		| sort -k1,1g --buffer-size=4G \
+	> ${tmpdir}/linenums
+
+	# convert linenums and lengths to coordinates
+
+	bedops --chrom $c -u ${uniq_mapping_file} \
+		| python <(cat <<__SCRIPT__
 
 import sys
 
-contig = ""
-start = 0 # region start
-end = 0 # region end
+uniqs = sys.stdin
+linenums = open("${tmpdir}/linenums")
 
-pos = 0 # current line
+pos = -1
 
-fn = open(sys.argv[1])
+for line in linenums:
 
-for line in fn:
-	
-	(i, n) = line.strip().split('\t')
-	(i, n) = (int(i), int(n))
+	(i, l) = line.strip().split('\t')
+	(i, l) = (int(i), int(l))
+
+	# if the line number is greater than the current
+	# uniquely mapping segment, get the next one.
 
 	while i > pos:
 
-		rline = sys.stdin.readline()
+		rline = uniqs.readline()
 		if not rline:
 			break
 
@@ -122,54 +206,39 @@ for line in fn:
 		(start, end) = (int(start), int(end))
 
 		pos += end - start
+	
+	# sample a second tag from the fragment length distribution
 
-	print "%s\t%d\t%d\ti\t%d" % (contig, end - (pos - i + 1), end - (pos - i + 1) + 1, n);
+	s = end - (pos - i + 1)
 
-fn.close()
+	print "%s\t%d\t%d" % (contig, s, s + 1)
+	print "%s\t%d\t%d" % (contig, s + l, s + l + 1);
 
-SCRIPT
+linenums.close()
 
-read_command="bedops $read_opts -u $tags"	
+__SCRIPT__
+		) \
+		| sort-bed --max-mem 4G - \
+	> ${tmpdir}/tags.${c}.bed
 
-# Remove old files
+	# make a tag counts file
 
-rm -f ${tmpdir}/tagcounts.bed
+	bedops -m ${tmpdir}/tags.${c}.bed | bedops --chop 1 - \
+		| bedmap --faster --delim "\t" --echo --count - ${tmpdir}/tags.${c}.bed \
+		| awk -v OFS="\t" '{ print $1, $2, $3, "i", $4; }' \
+	> ${tmpdir}/tagcounts.${c}.bed
 
-eval $read_command \
-	| awk -v OFS="\t" '{ c[$1] += $5; } \
-		END { for(contig in c) { print contig, c[contig]; } }' \
-	| sort -k1,1 \
-> ${tmpdir}/tagcounts
+	files="$files ${tmpdir}/tagcounts.${c}.bed"
 
-# read each contig
+#end while loop
 
-while read c n; do
+done < <(join -j 1 ${tmpdir}/fragcounts ${tmpdir}/uniqcounts)
 
-	# Generate random line numbers and sort
+# merge together
 
-	bedops --chrom $c -u $uniq_mapping_file \
-		| awk -v OFS="\t" \
-			-v n=$n \
-			-v seed=$seed \
-			'BEGIN { srand(seed); } \
-			{ total += $3-$2; } \
-			END { \
-				for(i = 0; i < n; i++) { \
-					print int(rand() * total); \
-				} \
-			 }' \
-		| sort -g \
-		| uniq -c \
-		| awk -v OFS="\t" '{ print $2, $1 }' \
-	> ${tmpdir}/linenums
+bedops -u $files > ${tmpdir}/tagcounts.bed
 
-	# Convert the line numbers to genomic positions
-
-	bedops --chrom $c -u $uniq_mapping_file \
-		| python ${tmpdir}/translate.py ${tmpdir}/linenums \
-	>> ${tmpdir}/tagcounts.bed
-
-done < ${tmpdir}/tagcounts
+# if starch, else copy
 
 if [ -n "$starch_output" ]; then
 	starch ${tmpdir}/tagcounts.bed > $outfile
