@@ -17,7 +17,7 @@ The software is modular -- various tasks will utlize somewhat different scripts.
 Example on a single core:
 
 	# simulate data for FDR calculation
-	bash /home/jvierstra/proj/code/hotspot/scripts/simulate.fragments.sh --tmpdir=/tmp --starch-output fragments.starch ${GENOME_MAPPABILITY_FILE} cutcounts.simulated.starch
+	bash /home/jvierstra/proj/code/hotspot/scripts/simulate.cutcounts.sh --tmpdir=/tmp --starch-output fragments.starch ${GENOME_MAPPABILITY_FILE} cutcounts.simulated.starch
 
 	# Call hotspots on observed data
 	bash ${HOTSPOT_DIR}/scripts/hotspot.run.sh --tmpdir=/tmp cutcounts.starch ${GENOME_MAPPABILITY_FILE} hotspots.unthresholded.bed

@@ -318,6 +318,7 @@ for iteration in $(seq 1 $npasses); do
 	 		\
 	 		print $1, $8, $9, "i", $5, window_size, e, e_sigma, o, z; \
 	 	}' \
+	 	| sort-bed - \
 	 > $scored_hotspots
 
 	 # Wait for everything to finish up
