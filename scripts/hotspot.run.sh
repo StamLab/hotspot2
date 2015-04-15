@@ -96,17 +96,16 @@ echo "PARAM:contig:$contig"
 ######
 
 npasses=2 					# Number of passes
-z_thresh=2 					# Min. z score to be reported (*not FDR*)
-merge_distance=75 			# Min. distance to merge hotspots
-
 local_window_size_min=100	# Min. local window size
 local_window_size_max=150	# Max. local window size
 local_window_size_step=25	# Windows sizes are stepped by this amount
-local_window_sd_thresh=3	# Number of SDs need to pass threshold
-
 local_window_sizes=(`seq $local_window_size_min $local_window_size_step $local_window_size_max`)
-
+local_window_sd_thresh=3	# Number of SDs need to pass threshold
 background_window_size=25000	# Background window size
+
+min_width=10				#
+z_thresh=2 					# Min. z score to be reported (*not FDR*)
+merge_distance=75 			# Min. distance to merge hotspots
 
 #TODO: implement badspot pipeline
 touch ${tmpdir}/badspots.bed
@@ -124,15 +123,18 @@ included="" # putative hotspots identified with each "pass"
 background_window_counts=${tmpdir}/background_window.counts.pipe
 local_window_counts=${tmpdir}/local_window.counts.pipe
 
+# Make the I/O faster by uncompressing
+# the cutcounts file to a local temp
 # Set the read command by format and 
 # whether a specific contig is desired
 
 read_command="bedops $read_opts -u $tags"	
-
-# Make the I/O faster by uncompressing
-# the cutcounts file to a local temp
-
 eval $read_command > ${tmpdir}/tagcounts.bed
+
+# Get genome mappable file
+
+read_command="bedops $read_opts -m $uniq_mapping_file"
+eval $read_command | awk -v OFS="\t" '{ t[$1] += $3-$2; } END { for(c in t) { print c, t[c]; } }' | sort -k1,1 > ${tmpdir}/uniq_mapping_pos.chrom
 
 ######
 # Main iteration loop
@@ -157,17 +159,26 @@ for iteration in $(seq 1 $npasses); do
 
 	echo "BEGIN:pass-$iteration:Selecting and merging windows. (`date -u`)"
 
+	# get the expected tag counts per chrom
+
+	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
+		| awk -v OFS="\t" '{ t[$1] += $5; } END { for(c in t) { print c, t[c]; } }' \
+		| sort -k1,1 \
+	> ${tmpdir}/tagcounts.chrom
+
+	join -j 1 ${tmpdir}/uniq_mapping_pos.chrom ${tmpdir}/tagcounts.chrom > ${tmpdir}/background.counts.chrom
+
 	# Get number of tags in background window
 	# Get number of uniquely mapping positions in background window
 	
-	rm -f $background_window_counts; mkfifo $background_window_counts
+	#rm -f $background_window_counts; mkfifo $background_window_counts
 
-	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
-		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum - \
-		| bedops --range $background_window_size -u - \
-		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
-		| cut -f6- \
-	> $background_window_counts &
+	#bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
+	#	| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum - \
+	#	| bedops --range $background_window_size -u - \
+	#	| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
+	#	| cut -f6- \
+	#> $background_window_counts &
 
 	local_window_counts_files=""
 
@@ -202,13 +213,16 @@ for iteration in $(seq 1 $npasses); do
 
 	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots $excluded \
 		| cut -f1-3 - \
-		| paste - $background_window_counts $local_window_counts_files \
+		| paste - $local_window_counts_files \
 		| awk -v OFS="\t" \
 			-v n_windows=${#local_window_sizes[@]} \
 			-v window_min=$local_window_size_min \
 			-v window_step=$local_window_size_step \
 			-v window_sd_thresh=$local_window_sd_thresh \
-			'{ \
+			'FNR == NR {
+				num_uniq_pos[$1] = $2; num_tags[$1] = $3; \
+			} \
+			{ \
 				max_window_size = -1; \
 				max_o = 0; \
 				max_e = 0; \
@@ -217,12 +231,10 @@ for iteration in $(seq 1 $npasses); do
 					window_size = (i * window_step) + window_min; \
 					full_window_size = window_size * 2; \
 					\
-					if(full_window_size >= $5 || $4 == 0) { continue; } \
+					o = $(i+4); \
 					\
-					o = $(i+6); \
-					\
-					p = full_window_size / $5; \
-					e = p * $4; \
+					p = full_window_size / num_uniq_pos[$1]; \
+					e = p * num_tags[$1]; \
 					e_sigma = sqrt(e * (1-p)); \
 					\
 					thresh = 1 + e + (e_sigma * window_sd_thresh); \
@@ -236,24 +248,28 @@ for iteration in $(seq 1 $npasses); do
 				if(max_window_size > 0) { \
 					print $1, $2, $3, "i", max_window_size, max_e, max_o; \
 				} \
-			}' \
+			}' ${tmpdir}/background.counts.chrom - \
 		| awk -v OFS="\t" \
 			'function abs(x) { \
 				return ((x < 0.0) ? -x : x) \
 			} \
 			\
-			BEGIN { chr = ""; } \
+			BEGIN { \
+				chr = ""; 
+			} \
 			{ \
-				if (chr == $1 && abs(start - $2) < ($5 * 2)) { \
-					center += $2; w += $5; e += $6; o += $7; n += 1; \
+				if (chr == $1 && abs(first_center - $2) < ($5 * 2)) {
+					sum_center += $2; sum_w += $5; sum_e += $6; sum_o += $7; n_windows += 1; \
 				} else { \
-					if(chr != "") { \
-						print chr, int(center/n) - int(w/n), int(center/n) + int(w/n), "i", int(center/n), e/n, o/n, n; \
-					} \
-					chr = $1; start = $2; center = $2; w = $5; e = $6; o = $7; n = 1; \
+					if (chr != "") { \
+						print chr, int(sum_center/n_windows) - int(sum_w/n_windows), int(sum_center/n_windows) + int(sum_w/n_windows), "i", int(sum_center/n_windows), sum_e/n_windows, sum_o/n_windows, n_windows; \
+					}
+					chr = $1; first_center = $2; sum_center = $2; sum_w = $5; sum_e = $6; sum_o = $7; n_windows = 1; \
 				} \
 			} \
-			END { print chr, int(center/n) - int(w/n), int(center/n) + int(w/n), "i", int(center/n), e/n, o/n, n; }' \
+			END { \
+				print chr, int(sum_center/n_windows) - int(sum_w/n_windows), int(sum_center/n_windows) + int(sum_w/n_windows), "i", int(sum_center/n_windows), sum_e/n_windows, sum_o/n_windows, n_windows;
+			}' \
 	> $raw_hotspots
 
 	# Wait for everything to finish up
