@@ -17,12 +17,12 @@ set -o pipefail
 
 usage="Usage: hotspot.thresh-merge.sh [--help] [--tmpdir=] [--q-thresh=0.01] <unthresholded hotspots> <output hotspots file>"
 
-params=$(getopt -o '' -l q-value:,tmpdir:,help -n "hotspot.thresh-merge.sh" -- "$@")
+params=$(getopt -o '' -l q-thresh:,tmpdir:,help -n "hotspot.thresh-merge.sh" -- "$@")
 eval set -- "$params"
 
 while true; do
 	case "$1" in
-		--q-value) 
+		--q-thresh) 
 			case "$2" in
 				"") echo "ERROR: No q-value specified!"; exit 1; ;;
 				*) q_thresh=$2; shift 2; ;;
