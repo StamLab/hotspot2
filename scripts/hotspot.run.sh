@@ -258,17 +258,31 @@ for iteration in $(seq 1 $npasses); do
 				chr = ""; 
 			} \
 			{ \
-				if (chr == $1 && abs(first_center - $2) < ($5 * 2)) {
-					sum_center += $2; sum_w += $5; sum_e += $6; sum_o += $7; n_windows += 1; \
+				if (chr == $1 && abs(last_center - $2) < ($5 * 2)) {
+					avg_center += $2; \
+					avg_width += $5; \
+					n_windows += 1; \
 				} else { \
 					if (chr != "") { \
-						print chr, int(sum_center/n_windows) - int(sum_w/n_windows), int(sum_center/n_windows) + int(sum_w/n_windows), "i", int(sum_center/n_windows), sum_e/n_windows, sum_o/n_windows, n_windows; \
-					}
-					chr = $1; first_center = $2; sum_center = $2; sum_w = $5; sum_e = $6; sum_o = $7; n_windows = 1; \
+						avg_center = int(avg_center/n_windows); \
+						avg_width = int(avg_width/n_windows); \
+						\
+						print chr, avg_center - avg_width, avg_center + avg_width, "i", avg_center, avg_width; \
+					}\
+					\
+					chr = $1; \
+					last_center = $2;\
+					\
+					avg_center = $2; \
+					avg_width = $5; \
+					n_windows = 1; \
 				} \
 			} \
 			END { \
-				print chr, int(sum_center/n_windows) - int(sum_w/n_windows), int(sum_center/n_windows) + int(sum_w/n_windows), "i", int(sum_center/n_windows), sum_e/n_windows, sum_o/n_windows, n_windows;
+				avg_center = int(avg_center/n_windows); \
+				avg_width = int(avg_width/n_windows); \
+				\
+				print chr, avg_center - avg_width, avg_center + avg_width, "i", avg_center, avg_width; \
 			}' \
 	> $raw_hotspots
 
@@ -300,7 +314,7 @@ for iteration in $(seq 1 $npasses); do
 		| bedmap --faster --delim "\t" --prec 0 --range $background_window_size --echo --sum $raw_hotspots - \
 		| bedops --range $background_window_size -u - \
 		| bedmap --faster --delim "\t" --echo --bases-uniq - $uniq_mapping_file \
-		| cut -f9- \
+		| cut -f7- \
 	> $background_window_counts &
 
 	# Get # of tags in hotspots
@@ -313,7 +327,7 @@ for iteration in $(seq 1 $npasses); do
 	> $local_window_counts &
 
 	# Re-calculate z-score
-	# Input BED: chr window_left window_right "i" pos uniq_pos bkg left right obs
+	# Input BED: chr window_left window_right "i" pos bkg uniq left right obs
 	# Output BED: chr left right "i" pos window_size expect expect_sigma, observed, z
 
 	cut -f1-5 $raw_hotspots \
