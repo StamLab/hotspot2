@@ -6,9 +6,9 @@ in next generation sequencing assays.
 
 ### Requirements ###
 
-* BEDOPS >2.4
+* BEDOPS >2.4 (http://bedops.readthedocs.org/)
 * Python 2.7 (w/ numpy)
-* random-lines (from my "bio-tools" C++ library)
+* random-lines (from https://bitbucket.org/jvierstra/bio-tools)
 
 ### Running ###
 
@@ -29,7 +29,7 @@ Example on a single core:
 	python ${HOTSPOT_DIR}/scripts/compute_q_values.py hotspots.simulated.bed hotspots.unthresholded.bed > hotspots.fdr.bed
 
 	# Select threshold and merge
-	bash ${HOTSPOT_DIR}/scripts/hotspot.thresh-merge.sh 0.01 hotspots.fdr.bed hotspots.fdr.0.01.bed
+	bash ${HOTSPOT_DIR}/scripts/hotspot.thresh-merge.sh --q-thresh=0.01 hotspots.fdr.bed hotspots.fdr.0.01.bed 
 
 Example to run chromosomes on separate processes (e.g., cluster):
 
