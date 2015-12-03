@@ -323,6 +323,7 @@ for iteration in $(seq 1 $npasses); do
 
 	bedops -n -1 ${tmpdir}/tagcounts.bed $badspots \
 		| bedmap --faster --delim "\t" --prec 0 --echo-map-range --sum $raw_hotspots - \
+		| sort-bed --max-mem 2G - \
 		| cut -f2- \
 	> $local_window_counts &
 
