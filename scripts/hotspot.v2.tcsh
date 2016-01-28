@@ -2,6 +2,8 @@
 # author : Shane Neph
 # date   : 2016
 # proj   : Reimplement hotspot using BEDOPS; see bottom of file for improvements over original hotspot
+#            - includes badspot calculations, and follow-on thresholded z-score hotspot calculations
+#            - may be called on real or simulated data.
 
 
 #########
@@ -55,6 +57,9 @@ foreach argc (`seq 1 $#argv`)
     set datadir = `echo "$argv[$argc]" | cut -f2 -d'='`
     if ( ! $%datadir ) then
       printf "No value given for --datadir=value\n"
+      exit -1
+    else if ( ! -s $datadir ) then
+      printf "Data diretory does not exist: %s\n" $datadir
       exit -1
     endif
     @ nargs--
@@ -119,7 +124,7 @@ endif
 
 if ( ! -s $black_outs ) then
   printf "Warning: Expect a file of known suspect regions named %s in %s\n" $black_outs:t $datadir > $errorlog
-  printf "\tContinuing...\n" > $errorlog
+  printf "\tContinuing anyway...\n" > $errorlog
   set black_outs = ""
 endif
 
@@ -167,7 +172,7 @@ rm -f $bspt_big_win
 # run the hotspot algorithm on the input
 #########################################
 rm -f $tmpdir/.empty
-touch $tmpdir/.empty # for $accumulated in the event that $black_outs & $badspots dne
+touch $tmpdir/.empty # for $accumulated in the event that both $black_outs & $badspots dne
 
 set accumulated = ($tmpdir/.empty $black_outs $badspots)
 foreach iteration (`seq 1 $n_passes`)
