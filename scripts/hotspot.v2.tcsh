@@ -52,14 +52,15 @@ end
 # overriding defaults?
 #----------------------
 @ nargs = $#argv
-foreach argc (`seq 1 $#argv`)
+@ arglimit = `echo "$#argv-2" | bc -q`
+foreach argc (`seq 1 $arglimit`)
   if ( "$argv[$argc]" =~ "--datadir=*" ) then
     set datadir = `echo "$argv[$argc]" | cut -f2 -d'='`
     if ( ! $%datadir ) then
       printf "No value given for --datadir=value\n"
       exit -1
-    else if ( ! -s $datadir ) then
-      printf "Data diretory does not exist: %s\n" $datadir
+    else if ( ! -s $datadir || ! -d $datadir || ! -r $datadir ) then
+      printf "Data directory does not exist or cannot be read: %s\n" $datadir
       exit -1
     endif
     @ nargs--
@@ -83,8 +84,10 @@ if ( $nargs != $nreqargs ) then
   exit -1
 endif
 
-set tags   = $1
-set outdir = $2
+@ arglimit++
+set tags   = $argv[$arglimit]
+@ arglimit++
+set outdir = $argv[$arglimit]
 
 if ( ! -s $tags ) then
   printf "Unable to find <input-tags>: %s\n" $tags
