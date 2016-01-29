@@ -2,32 +2,33 @@
 # author : Shane Neph
 # date   : 2016
 # proj   : Reimplement hotspot using BEDOPS; see bottom of file for improvements over original hotspot
-#            - includes badspot calculations, and follow-on thresholded z-score hotspot calculations
+#            - output includes badspot calculations and follow-on thresholded (by z-score) hotspot calculations
 #            - may be called on real or simulated data.
 
 
-###########
-# defaults
-###########
-set db      = hg19
+################
+# some defaults
+################
+set db = hg19
 set datadir = ../data/$db
-set tmpdir  = /tmp/`whoami`/hotspot/$$
+set basetmpdir = /tmp/`whoami`/hotspot
 if ( $?TMPDIR ) then
   # use the environmental variable
-  set tmpdir = $TMPDIR"/$$"
+  set basetmpdir = $TMPDIR
 endif
+set tmpdir = $basetmpdir/$$
 
 
 #########
 # usage:
 #########
-set help = "\nUsage: hotspot [--help] [--datadir="$datadir"] [--tmpdir="$tmpdir"] <input-tags> <outdir>\n"
-set help = "$help\t<input-tags> is a per-base bed|starch file with the number of 5' cuts in the 5th column, excluding bases with 0 cuts.\n"
-set help = "$help\t<outdir> is an output directory where to place minimally (z-score) thresholded hotspot calls and badspot calls.\n"
-set help = "$help\t[--datadir] should contain the following 3+ column starch files:\n"
+set help = "\nUsage: hotspot [--help] [--datadir="$datadir"] [--tmpdir="$basetmpdir"/] <input-tags> <outdir>\n"
+set help = "$help\t<input-tags> is a per-base bed|starch file with the number of cleavages in the 5th column, excluding bases with no cuts.\n"
+set help = "$help\t<outdir> is an output directory where to place badspot calls and minimally (z-score) thresholded hotspot calls.\n"
+set help = "$help\tThe [--datadir] should contain the following 3+ column starch files:\n"
 set help = "$help\t    blacklist.starch        : Pre-determined troublesome regions to ignore.  A warning is issued if not found.\n"
 set help = "$help\t    uniquely-mapping.starch : All uniquely-mapping regions, merged.\n"
-set help = "$help\t[--tmpdir] overrides environmental "\$"TMPDIR which overrides the default /tmp/ working temp directory.\n"
+set help = "$help\tThe [--tmpdir] overrides environmental "\$"TMPDIR which overrides the default "$basetmpdir"/ working temp directory.\n"
 
 
 #################
@@ -97,11 +98,13 @@ else if ( -e $outdir && ! -d $outdir ) then
   exit -1
 endif
 mkdir -p $outdir
+rm -rf $tmpdir
+mkdir -p $tmpdir
 
 
-############
-# hardcodes
-############
+####################
+# default hardcodes
+####################
 @ bgnd_half_range      = 25000 # background half-window size
 @ fg_half_win          = 125   # foreground half-window size
 @ min_hotspot_size     = 10    # smallest hotspot allowed
@@ -130,13 +133,6 @@ if ( ! -s $black_outs ) then
   printf "\tContinuing anyway...\n" > $errorlog
   set black_outs = ""
 endif
-
-
-############################
-# temp directory to do work
-############################
-rm -rf $tmpdir
-mkdir -p $tmpdir
 
 
 #####################
@@ -279,9 +275,9 @@ exit 0
 
 ##############################################################################################################################
 # changes relative to hotspot v4 at http://www.uwencode.org/proj/hotspot/
-#  - backgrounds are symmetrical about every location with a tag rather than pre-chunked in fixed size bins across the genome
+#  - backgrounds are symmetrical about every location with a tag rather than pre-chunked in fixed-size bins across the genome
 #       this was the original intention of hotspot
 #  - uses a single foreground window of size $fg_half_win instead of choosing the best result over 3 local window sizes
-#       it was a group decision to choose one, and Bob Thurman concurred in private communication
+#       it was a group decision to choose one, and Bob Thurman concurred with this approach
 #       the single size is the middle of the 3 used in the original hotspot
 ##############################################################################################################################
