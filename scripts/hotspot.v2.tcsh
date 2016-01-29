@@ -6,18 +6,6 @@
 #            - may be called on real or simulated data.
 
 
-#########
-# usage:
-#########
-set help = "\nUsage: hotspot [--help] [--datadir=../data/hg19] [--tmpdir=/tmp/] <input-tags> <outdir>\n"
-set help = "$help\t<input-tags> is a per-base bed|starch file with the number of 5' cuts in the 5th column, excluding bases with 0 cuts.\n"
-set help = "$help\t<outdir> is an output directory where to place minimally (z-score) thresholded hotspot calls and badspot calls.\n"
-set help = "$help\t[--datadir] should contain the following 3+ column starch files:\n"
-set help = "$help\t    blacklist.starch        : Pre-determined troublesome regions to ignore.  A warning is issued if not found.\n"
-set help = "$help\t    uniquely-mapping.starch : All uniquely-mapping regions, merged.\n"
-set help = "$help\t[--tmpdir] overrides environmental "\$"TMPDIR which overrides the default /tmp/ working temp directory.\n"
-
-
 ###########
 # defaults
 ###########
@@ -28,6 +16,18 @@ if ( $?TMPDIR ) then
   # use the environmental variable
   set tmpdir = $TMPDIR"/$$"
 endif
+
+
+#########
+# usage:
+#########
+set help = "\nUsage: hotspot [--help] [--datadir="$datadir"] [--tmpdir="$tmpdir"] <input-tags> <outdir>\n"
+set help = "$help\t<input-tags> is a per-base bed|starch file with the number of 5' cuts in the 5th column, excluding bases with 0 cuts.\n"
+set help = "$help\t<outdir> is an output directory where to place minimally (z-score) thresholded hotspot calls and badspot calls.\n"
+set help = "$help\t[--datadir] should contain the following 3+ column starch files:\n"
+set help = "$help\t    blacklist.starch        : Pre-determined troublesome regions to ignore.  A warning is issued if not found.\n"
+set help = "$help\t    uniquely-mapping.starch : All uniquely-mapping regions, merged.\n"
+set help = "$help\t[--tmpdir] overrides environmental "\$"TMPDIR which overrides the default /tmp/ working temp directory.\n"
 
 
 #################
