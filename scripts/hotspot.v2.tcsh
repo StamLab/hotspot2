@@ -112,7 +112,7 @@ mkdir -p $tmpdir
 @ min_zscore           = 2     # hotspot zscore must be >= $min_zscore
 @ n_passes             = 2     # number of hotspot passes, removing all tags from previous pass(es)
 @ badspot_mintags      = 5     # consider badspot if local window has at least this many tags
-@ badspot_threshold    = 0.8   # is a badspot if this proportion of tags occurs in the small window
+set badspot_threshold  = 0.8   # is a badspot if this proportion of tags occurs in the small window
 @ bspot_small_half_win = 25    # badspot foreground half-window size
 @ bspot_big_half_win   = 125   # badspot background half-window size
 set black_outs         = $datadir/blacklist.starch
@@ -140,7 +140,7 @@ endif
 #####################
 set bspt_small_win = $tmpdir/badspot.win-small
 set bspt_big_win   = $tmpdir/badspot.win-large
-set badspots       = $tmpdir/badspots.bed
+set badspots       = $outdir/badspots.bed
 
 rm -f $bspt_small_win
 rm -f $bspt_big_win
