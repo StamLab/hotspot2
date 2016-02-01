@@ -144,6 +144,9 @@ endif
 #####################
 # determine badspots
 #####################
+rm -f $tmpdir/.empty
+touch $tmpdir/.empty
+set badstuff = ($tmpdir/.empty $black_outs)
 set bspt_small_win = $tmpdir/badspot.win-small
 set bspt_big_win   = $tmpdir/badspot.win-large
 set badspots       = $outdir/badspots.bed
@@ -153,20 +156,23 @@ rm -f $bspt_big_win
 mkfifo $bspt_small_win
 mkfifo $bspt_big_win
 
-(bedops -u --range $bspot_small_half_win $tags \
-  | bedmap --faster --prec 0 --delim "\t" --echo --sum - \
+(bedops -n 1 $tags $badstuff \
+  | bedmap --faster --prec 0 --delim "\t" --echo-map-range --sum --range $bspot_small_half_win - \
  >! $bspt_small_win) &
 
-(bedops -u --range $bspot_big_half_win $tags \
-  | bedmap --faster --prec 0 --sum - \
+(bedops -n 1 $tags $badstuff \
+  | bedmap --faster --prec 0 --sum --range $bspot_big_half_win - \
  >! $bspt_big_win) &
 
 paste $bspt_small_win $bspt_big_win \
   | awk -v m=$badspot_mintags -v t=$badspot_threshold '($(NF-1) >= m && $(NF-1)/$(NF) >= t)' \
+  | sort-bed --max-mem 2G - \
   | bedops -m - \
  >! $badspots
 
 wait
+
+set badstuff = ($badstuff $badspots)
 
 # clean up pipes
 rm -f $bspt_small_win
@@ -176,10 +182,6 @@ rm -f $bspt_big_win
 #########################################
 # run the hotspot algorithm on the input
 #########################################
-rm -f $tmpdir/.empty
-touch $tmpdir/.empty # for $bad_stuff in the event that both $black_outs & $badspots dne
-
-set badstuff = ($tmpdir/.empty $black_outs $badspots)
 set accumulated = ()
 foreach iteration (`seq 1 $n_passes`)
   set bgnd       = $tmpdir/bkgd
