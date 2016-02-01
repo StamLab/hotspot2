@@ -191,16 +191,16 @@ foreach iteration (`seq 1 $n_passes`)
   mkfifo $bgnd
   mkfifo $bgnd_umaps
 
-  (bedops -n 1 $tags $badstuff \
+  (bedops -n 1 $tags $badstuff $accumulated \
     | bedops -u --range $bgnd_half_range - \
     | bedmap --faster --bases-uniq - $uniqs_maps \
    >! $bgnd_umaps) &
 
-  (bedops -n 1 $tags $badstuff \
+  (bedops -n 1 $tags $badstuff $accumulated \
     | bedmap --faster --prec 0 --sum --range $bgnd_half_range - \
    >! $bgnd) &
 
-  bedops -n 1 $tags $badstuff \
+  bedops -n 1 $tags $badstuff $accumulated \
     | cut -f1-5 \
     | bedmap --faster --echo --prec 0 --sum --range $fg_half_win --delim "\t" - \
     | cut -f1-3,6 \
