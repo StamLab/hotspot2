@@ -374,11 +374,11 @@ for iteration in $(seq 1 $npasses); do
 			'$3-$2 < min_width { next; } $10 < z_thresh { next; } { print; }' \
 		| bedops --range $merge_distance -u - | bedops -m - | bedops --range -$merge_distance -u - \
 		| sort-bed - \
-	> $merged_thresholded_hotspots
+	> $merged_thresholded_hotspots.$iteration
 
 	echo "END:pass-$iteration:Generating excluded regions. (`date -u`)"
 
-	excluded="$excluded $merged_thresholded_hotspots"
+	excluded="$excluded $merged_thresholded_hotspots.$iteration"
 	included="$included $scored_hotspots"
 
 done
