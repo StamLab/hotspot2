@@ -1,4 +1,4 @@
-#!/bin/tcsh -ef
+#!/bin/tcsh -efx
 # author : Shane Neph
 # date   : 2016
 # proj   : Reimplement hotspot using BEDOPS; see bottom of file for improvements over original hotspot
@@ -129,8 +129,8 @@ else if ( ! -s $uniqs_maps ) then
 endif
 
 if ( ! -s $black_outs ) then
-  printf "Warning: Expect a file of known suspect regions named %s in %s\n" $black_outs:t $datadir > $errorlog
-  printf "\tContinuing anyway...\n" > $errorlog
+  printf "Warning: Expect a file of known suspect regions named %s in %s\n" $black_outs:t $datadir >> $error_log
+  printf "\tContinuing anyway...\n" >> $error_log
   set black_outs = ""
 endif
 
@@ -171,9 +171,10 @@ rm -f $bspt_big_win
 # run the hotspot algorithm on the input
 #########################################
 rm -f $tmpdir/.empty
-touch $tmpdir/.empty # for $accumulated in the event that both $black_outs & $badspots dne
+touch $tmpdir/.empty # for $bad_stuff in the event that both $black_outs & $badspots dne
 
-set accumulated = ($tmpdir/.empty $black_outs $badspots)
+set badstuff = ($tmpdir/.empty $black_outs $badspots)
+set accumulated = ()
 foreach iteration (`seq 1 $n_passes`)
   set bgnd       = $tmpdir/bkgd
   set bgnd_umaps = $tmpdir/umaps
@@ -184,16 +185,16 @@ foreach iteration (`seq 1 $n_passes`)
   mkfifo $bgnd
   mkfifo $bgnd_umaps
 
-  (bedops -n 1 $tags $accumulated \
+  (bedops -n 1 $tags $badstuff \
     | bedops -u --range $bgnd_half_range - \
     | bedmap --faster --bases-uniq - $uniqs_maps \
    >! $bgnd_umaps) &
 
-  (bedops -n 1 $tags $accumulated \
+  (bedops -n 1 $tags $badstuff \
     | bedmap --faster --prec 0 --sum --range $bgnd_half_range - \
    >! $bgnd) &
 
-  bedops -n 1 $tags $accumulated \
+  bedops -n 1 $tags $badstuff \
     | cut -f1-5 \
     | bedmap --faster --echo --prec 0 --sum --range $fg_half_win --delim "\t" - \
     | cut -f1-3,6 \
