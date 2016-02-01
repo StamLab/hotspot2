@@ -1,4 +1,4 @@
-#!/bin/tcsh -efx
+#!/bin/tcsh -ef
 # author : Shane Neph
 # date   : 2016
 # proj   : Reimplement hotspot using BEDOPS; see bottom of file for improvements over original hotspot
@@ -26,8 +26,8 @@ set help = "\nUsage: hotspot [--help] [--datadir="$datadir"] [--tmpdir="$basetmp
 set help = "$help\t<input-tags> is a per-base bed|starch file with the number of cleavages in the 5th column, excluding bases with no cuts.\n"
 set help = "$help\t<outdir> is an output directory where to place badspot calls and minimally (z-score) thresholded hotspot calls.\n"
 set help = "$help\tThe [--datadir] should contain the following 3+ column starch files:\n"
-set help = "$help\t    blacklist.starch        : Pre-determined troublesome regions to ignore.  A warning is issued if not found.\n"
-set help = "$help\t    uniquely-mapping.starch : All uniquely-mapping regions, merged.\n"
+set help = "$help\t    blacklist.starch (or .bed)       : Pre-determined troublesome regions to ignore.  A warning is issued if not found.\n"
+set help = "$help\t    uniquely-mapping.starch (or .bed): All uniquely-mapping regions, merged.\n"
 set help = "$help\tThe [--tmpdir] overrides environmental "\$"TMPDIR which overrides the default "$basetmpdir"/ working temp directory.\n"
 
 
@@ -124,14 +124,20 @@ if ( $fg_half_win >= $bgnd_half_range ) then
   printf "Your <background-half-range> should be larger than %s\n" $fg_half_win
   exit -1
 else if ( ! -s $uniqs_maps ) then
-  printf "Unable to find <uniq-mapability>: %s in %s\n" $uniqs_maps:t $datadir
-  exit -1
+  set uniqs_maps = $datadir/uniquely-mapping.bed
+  if ( ! -s $uniqs_maps ) then
+    printf "Unable to find <uniq-mapability>: %s in %s\n" $uniqs_maps:t $datadir
+    exit -1
+  endif
 endif
 
 if ( ! -s $black_outs ) then
-  printf "Warning: Expect a file of known suspect regions named %s in %s\n" $black_outs:t $datadir >> $error_log
-  printf "\tContinuing anyway...\n" >> $error_log
-  set black_outs = ""
+  set black_outs = $datadir/blacklist.bed
+  if ( ! -s $black_outs ) then
+    printf "Warning: Expect a file of known suspect regions named %s in %s\n" $black_outs:t $datadir >> $error_log
+    printf "\tContinuing anyway...\n" >> $error_log
+    set black_outs = ""
+  endif
 endif
 
 
