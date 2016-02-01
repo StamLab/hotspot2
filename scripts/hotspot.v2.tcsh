@@ -12,9 +12,11 @@
 set db = hg19
 set datadir = ../data/$db
 set basetmpdir = /tmp/`whoami`/hotspot
+@ defaulttmpdir = 1
 if ( $?TMPDIR ) then
   # use the environmental variable
   set basetmpdir = $TMPDIR
+  @ defaulttmpdir = 0
 endif
 set tmpdir = $basetmpdir/$$
 
@@ -72,6 +74,7 @@ foreach argc (`seq 1 $arglimit`)
       exit -1
     endif
     @ nargs--
+    @ defaulttmpdir = 0
   endif
 end
 
@@ -98,7 +101,10 @@ else if ( -e $outdir && ! -d $outdir ) then
   exit -1
 endif
 mkdir -p $outdir
-rm -rf $tmpdir
+
+if ( $defaulttmpdir > 0 ) then
+  rm -rf $tmpdir
+endif
 mkdir -p $tmpdir
 
 
@@ -277,7 +283,9 @@ bedops -u $accumulated \
 
 wait
 
-rm -rf $tmpdir
+if ( $defaulttmpdir > 0 ) then
+  rm -rf $tmpdir
+endif
 
 exit 0
 
